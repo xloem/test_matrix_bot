@@ -9,9 +9,9 @@ Test it out by adding it to a group chat and doing one of the following:
 
 ##### Remember to separate the bot interactions from its behavior, so other chatting systems can be used.
 
-import logging; logger = logging
+import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 import random
 
@@ -85,4 +85,5 @@ class ExampleBot(MatrixBotAPI):
         room.send_text(str(result))
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     ExampleBot().start_polling()
