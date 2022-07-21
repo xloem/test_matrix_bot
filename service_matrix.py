@@ -9,6 +9,8 @@ from matrix_bot_api.matrix_bot_api import MatrixBotAPI
 from matrix_bot_api.mregex_handler import MRegexHandler
 from matrix_bot_api.mcommand_handler import MCommandHandler
 
+import services
+
 class Matrix(MatrixBotAPI):
     def __init__(self, handler, username, password, server):#username='test_matrix_bot', password='test_matrix_bot', server='https://matrix.org'):
         self.handler = handler
@@ -36,15 +38,17 @@ class Matrix(MatrixBotAPI):
         else:
             reply_id = None
 
+        data = None
         if event['type'] == 'm.room.message':
-            message = event['content']['body']
-            self.handler._on_message(self, room_name, event_id, sender, message, raw=raw, reply=reply_id)
+            data = event['content']['body']
+            type = 'message'
         elif event['type'] == 'm.room.member':
-            membership = event['content']['membership']
-            self.handler._on_member(self, room_name, event_id, sender, membership, raw=raw)
+            data = event['content']['membership']
+            type = 'membership'
         else:
-            message = f"{event['type']}: {repr(event['content'])}"
-            self.handler._on_other(self, room_name, event_id, sender, raw=raw, reply=reply_id)
+            data = f"{event['type']}: {repr(event['content'])}"
+            type = 'other'
+        self.handler._on_event(services.Event(self, room_name, event_id, sender, type, data=data, raw=raw, reply=reply_id))
 
     def start(self):
         # Start polling

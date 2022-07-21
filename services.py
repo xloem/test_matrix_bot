@@ -3,12 +3,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from service_matrix import Matrix
 
 ##### The interactions with chat services are separated from bot behavior.
 ##### This lets one change what platform the bot operates on, or what library it uses,
 #####  by only changing a small part of the code.
 ##### Separating things this way is important when writing software.
+
+class Event:
+    def __init__(self, service, room, id, sender, type, data=None, raw=None, reply=None):
+        self.service = service
+        self.room = room
+        self.id = id
+        self.sender = sender
+        self.type = type
+        self.data = data
+        self.raw = raw
+        self.reply = reply
 
 class Services:
     def __init__(self):
@@ -20,41 +30,35 @@ class Services:
         self.services.append(service)
         service.start()
     def add_matrix(self, username, password, server):
-        self.add(Matrix(self, username, password, server))
+        import service_matrix
+        self.add(service_matrix.Matrix(self, username, password, server))
 
-    def on_member(self, service, room, event_id, sender, membership, raw=None):
-        self.on_message(service, room, event_id, sender, f"{membership}", raw=raw)
-    def on_other(self, service, room, event_id, sender, raw=None, reply=None):
-        self.on_message(service, room, event_id, sender, repr(raw), raw=raw, reply=reply)
-    def on_message(self, service, room, event_id, sender, message, raw=None, reply=None):
+    def on_member(self, event):
+        self.on_message(event)
+    def on_other(self, event):
+        self.on_message(event)
+    def on_message(self, event):
         pass
 
-    def _on_error(self, **kwparams):
+    def _on_error(self, event, exception):
         import traceback
         exc_str = traceback.format_exc()
-        logger.error(f'{kwparams}')
+        logger.error(f'{event.service} {event.room} {event.id} {event.sender} {event.type} {event.data} reply={event.reply}')
         for line in exc_str.split('\n'):
             logger.error(line)
-        self.on_error(**kwparams, exception_string = exc_str)
-    def _on_member(self, service, room, event_id, sender, membership, raw=None):
+        self.on_error(event, exception, exc_str)
+    def _on_event(self, event):
         try:
-            self.log(service, room, sender, membership)
-            self.on_member(self, service, room, event_id, sender, membership, raw=raw)
+            self.log(event.service, event.room, event.sender, event.data or '<no data>')
+            if type == 'message':
+                if event.sender != service.user_id:
+                    self.on_message(event)
+            elif type == 'membership':
+                self.on_membership(event)
+            else:
+                self.on_other(event)
         except Exception as exception:
-            self._on_error(service=service, room=room, id=event_id, sender=sender, type='member', raw=raw, reply=reply, exception=exception)
-    def _on_other(self, service, room, event_id, sender, raw=None, reply=None):
-        try:
-            self.log(service, room, sender, repr(raw))
-            self.on_other(service, room, event_id, sender, raw=raw, reply=reply)
-        except Exception as exception:
-            self._on_error(service=service, room=room, id=event_id, sender=sender, type='other', raw=raw, reply=reply, exception=exception)
-    def _on_message(self, service, room, event_id, sender, message, raw=None, reply=None):
-        try:
-            self.log(service, room, sender, message)
-            if sender != service.user_id:
-                self.on_message(service, room, event_id, sender, message, raw=raw, reply=reply)
-        except Exception as exception:
-            self._on_error(service=service, room=room, id=event_id, sender=sender, message=message, type='message', raw=raw, reply=reply, exception=exception)
+            self._on_error(event=event, exception=exception)
 
     def log(self, service, room, sender, text):
         log_lines = text.split('\n')

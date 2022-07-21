@@ -15,24 +15,24 @@ class Bot(Services):
         super().__init__()
         self.add_matrix(username, password, homeserver)
 
-    def on_error(self, service, room, id, sender, message, type, raw, reply, exception, exception_string):
+    def on_error(self, event, exception, exception_string):
         for line in exception_string.split('\n'):
-            service.send(room, line)
+            event.service.send(event.room, line)
 
-    def on_message(self, service, room, id, sender, message, raw=None, reply=None):
-        if 'open%pdb' in message:
-            service.send(room, "I'm opening a PDB session to look at my code. You can look at this too, at https://github.com/xloem/test_matrix_bot . TODO: put commit hash here")
+    def on_message(self, msg):
+        if 'open%pdb' in msg.data:
+            msg.service.send(msg.room, "I'm opening a PDB session to look at my code. You can look at this too, at https://github.com/xloem/test_matrix_bot . TODO: put commit hash here")
             import pdb; pdb.set_trace()
-            service.send(room, "The PDB session has closed.")
-        elif 'raise%exception' in message:
-            service.send(room, 'Are you sure? This is really scary ... Here we go; I\'ll raise an exception.')
-            raise Exception(f"{sender} asked me to raise this but I'm worried about it.")
-        elif 'Hi' in message:
-            service.send(room, "Hi, " + sender)
-        elif message.startswith('!echo'):
-            service.send(room, message[len('!echo')+1:])
-        elif message.startswith('!d'):
-            room, event = raw
+            msg.service.send(msg.room, "The PDB session has closed.")
+        elif 'raise%exception' in msg.data:
+            msg.service.send(msg.room, 'Are you sure? This is really scary ... Here we go; I\'ll raise an exception.')
+            raise Exception(f"{msg.sender} asked me to raise this but I'm worried about it.")
+        elif 'Hi' in msg.data:
+            msg.service.send(msg.room, "Hi, " + msg.sender)
+        elif msg.data.startswith('!echo'):
+            msg.service.send(msg.room, msg.data[len('!echo')+1:])
+        elif msg.data.startswith('!d'):
+            room, event = msg.raw
             dieroll_callback(room, event)
 
 def dieroll_callback(room, event):
