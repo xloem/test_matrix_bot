@@ -30,6 +30,10 @@ class ExampleBot(MatrixBotAPI):
         hi_handler = MRegexHandler("Hi", self.hi_callback)
         self.add_handler(hi_handler)
 
+        # Add a regex handler for opening pdb
+        pdb_handler = MRegexHandler("open%pdb", self.pdb_callback)
+        self.add_handler(pdb_handler)
+
         # Add a regex handler waiting for the echo command
         echo_handler = MCommandHandler("echo", self.echo_callback)
         self.add_handler(echo_handler)
@@ -46,9 +50,9 @@ class ExampleBot(MatrixBotAPI):
         else:
             body = repr(event['content'])
         lines = body.split('\n')
-        logger.info(f'{sender}: {lines[0]}')
+        logger.info(f'{room.name} {sender}: {lines[0]}')
         for extra_line in lines[1:]:
-            logger.info(f'{padding}: {extra_line}')
+            logger.info(f'{room.name} {padding}: {extra_line}')
 
         super().handle_message(room, event)
 
@@ -56,9 +60,13 @@ class ExampleBot(MatrixBotAPI):
         # Start polling
         super().start_polling()
 
-        # Infinitely read stdin to stall main thread while the bot runs in other threads
-        while True:
-            input()
+        # Wait
+        self.client.sync_thread.join()
+
+    def pdb_callback(self, room, event):
+        room.send_text("I'm opening a PDB session to look at my code. You can look at this too, at https://github.com/xloem/test_matrix_bot . TODO: put commit hash here")
+        import pdb; pdb.set_trace()
+        room.send_text("The PDB session has closed.")
 
     def hi_callback(self, room, event):
         # Somebody said hi, let's say Hi back
