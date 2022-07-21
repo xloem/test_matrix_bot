@@ -39,7 +39,17 @@ class ExampleBot(MatrixBotAPI):
         self.add_handler(dieroll_handler)
 
     def handle_message(self, room, event):
-        logger.info(f"{event['sender']}: {event['content']['body']}")
+        sender = event['sender']
+        padding = ' ' * len(sender)
+        if 'body' in event['content']:
+            body = event['content']['body']
+        else:
+            body = repr(event['content'])
+        lines = body.split('\n')
+        logger.info(f'{sender}: {lines[0]}')
+        for extra_line in lines[1:]:
+            logger.info(f'{padding}: {extra_line}')
+
         super().handle_message(room, event)
 
     def start_polling(self):
