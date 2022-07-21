@@ -7,6 +7,12 @@ Test it out by adding it to a group chat and doing one of the following:
 3. Say !d6 to get a random size-sided die roll result
 """
 
+##### Remember to separate the bot interactions from its behavior, so other chatting systems can be used.
+
+import logging; logger = logging
+
+logging.basicConfig(level=logging.INFO)
+
 import random
 
 from matrix_bot_api.matrix_bot_api import MatrixBotAPI
@@ -17,6 +23,8 @@ class ExampleBot(MatrixBotAPI):
     def __init__(self, username='test_matrix_bot', password='test_matrix_bot', server='https://matrix.org'):
         # Create an instance of the MatrixBotAPI
         super().__init__(username, password, server)
+
+        ##### Remember to separate the bot interactions from its behavior, so other chatting systems can be plugged in.
 
         # Add a regex handler waiting for the word Hi
         hi_handler = MRegexHandler("Hi", self.hi_callback)
@@ -29,6 +37,10 @@ class ExampleBot(MatrixBotAPI):
         # Add a regex handler waiting for the die roll command
         dieroll_handler = MCommandHandler("d", self.dieroll_callback)
         self.add_handler(dieroll_handler)
+
+    def handle_message(self, room, event):
+        logger.info(f"{event['sender']}: {event['content']['body']}")
+        super().handle_message(room, event)
 
     def start_polling(self):
         # Start polling
