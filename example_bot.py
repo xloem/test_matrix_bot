@@ -13,26 +13,26 @@ from matrix_bot_api.matrix_bot_api import MatrixBotAPI
 from matrix_bot_api.mregex_handler import MRegexHandler
 from matrix_bot_api.mcommand_handler import MCommandHandler
 
-class ExampleBot:
+class ExampleBot(MatrixBotAPI):
     def __init__(self, username='test_matrix_bot', password='test_matrix_bot', server='https://matrix.org'):
         # Create an instance of the MatrixBotAPI
-        self.bot = MatrixBotAPI(username, password, server)
+        super().__init__(username, password, server)
 
         # Add a regex handler waiting for the word Hi
         hi_handler = MRegexHandler("Hi", self.hi_callback)
-        self.bot.add_handler(hi_handler)
+        self.add_handler(hi_handler)
 
         # Add a regex handler waiting for the echo command
         echo_handler = MCommandHandler("echo", self.echo_callback)
-        self.bot.add_handler(echo_handler)
+        self.add_handler(echo_handler)
 
         # Add a regex handler waiting for the die roll command
         dieroll_handler = MCommandHandler("d", self.dieroll_callback)
-        self.bot.add_handler(dieroll_handler)
+        self.add_handler(dieroll_handler)
 
-    def run(self):
+    def start_polling(self):
         # Start polling
-        self.bot.start_polling()
+        super().start_polling()
 
         # Infinitely read stdin to stall main thread while the bot runs in other threads
         while True:
@@ -72,6 +72,5 @@ class ExampleBot:
         result = random.randrange(1,die_max+1)
         room.send_text(str(result))
 
-
 if __name__ == "__main__":
-    ExampleBot().run()
+    ExampleBot().start_polling()
