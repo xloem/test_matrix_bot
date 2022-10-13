@@ -50,6 +50,20 @@ class Matrix(MatrixBotAPI):
             type = 'other'
         self.handler._on_event(services.Event(self, room_name, event_id, sender, type, data=data, raw=raw, reply=reply_id))
 
+    def handle_invite(self, room_id, state):
+        # this overrides the base class invite handler to add rooms to a dict rather than a list.
+        # i don't recall the original design plan well to know if this is the right solution.
+        print("Got invite to room: " + str(room_id))
+        if self.room_ids is None or room_id in self.room_ids:
+            print("Joining...")
+            room = self.client.join_room(room_id)
+            # Add message callback for this room
+            room.add_listener(self.handle_message)
+            # Add room
+            self.rooms[room_id] = room
+        else:
+            print("Room not in allowed rooms list")
+    
     def start(self):
         # Start polling
         super().start_polling()
