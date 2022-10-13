@@ -20,6 +20,8 @@ class Bot(Services):
             event.service.send(event.room, line)
 
     def on_message(self, msg):
+        if msg.sender == msg.service.user_id:
+            return
         if 'open%pdb' in msg.data:
             msg.service.send(msg.room, "I'm opening a PDB session to look at my code. You can look at this too, at https://github.com/xloem/test_matrix_bot . TODO: put commit hash here")
             import pdb; pdb.set_trace()
