@@ -34,6 +34,8 @@ class Bot(Services):
         elif msg.data.startswith('!d'):
             room, event = msg.raw
             dieroll_callback(room, event)
+        elif msg.data.startswith('!eval '):
+            msg.service.send(msg.room, str(eval(msg.data[len('!eval ')], globals(), locals())))
 
 def dieroll_callback(room, event):
     import random
