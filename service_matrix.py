@@ -17,7 +17,20 @@ class Matrix(MatrixBotAPI):
         # Create an instance of the MatrixBotAPI
         super().__init__(username, password, server)
         self.user_id = self.client.user_id
-        self.rooms = {}
+        self.rooms = {
+            self._room2name(room): room
+            for room in self.client.get_rooms().values()
+            if not room.guest_access
+        }
+   
+    @staticmethod
+    def _room2name(room):
+        if room.name is None:
+            return room.room_id
+        if ':' in room.name:
+            return room.name
+        else:
+            return room.name + room.room_id[room.room_id.find(':'):]
 
     def send(self, room_name, message):
         result = self.rooms[room_name].send_text(message)
@@ -27,8 +40,8 @@ class Matrix(MatrixBotAPI):
         event_id = event['event_id']
         sender = event['sender']
         raw = (room, event)
-        room_name = room.name
-        if room_name not in self.rooms:
+        room_name = self._room2name(room)
+        if not room.guest_access and room_name not in self.rooms:
             self.rooms[room_name] = room
         if 'm.relates_to' in event['content']:
             if 'm.in_reply_to' in event['content']['m.relates_to']:

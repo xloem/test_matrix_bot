@@ -1,9 +1,11 @@
-import os
+import os, queue, threading
 
 from prwkv.rwkvtokenizer import RWKVTokenizer
 from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
-class RWKV:
+import services
+
+class RWKVModel:
     def __init__(self, model_path, state_path, n_layer = None, n_embd = None, ctx_len = None, default_ctx = None):
         self.tokenizer = RWKVTokenizer.default()
         self.model = None
@@ -46,8 +48,50 @@ class RWKV:
             self.model.init_logits, self.model.init_state = self.model.model.forward([token_id], self.model.init_state)
             yield self.tokenizer.decode([token_id])
 
+class RWKV(threading.Thread):
+    def __init__(self, bot):
+        super().__init__(daemon=True)
+        self.bot = bot
+        self.rwkv = RWKVModel('RWKV-4-1B5', 'state--RWKV-4-1B5')
+        self.incoming = queue.Queue()
+        self.outgoing = set()
+        self.start()
+    def on_message(self, msg):
+        if msg.sender == msg.service.user_id:
+            note = (msg.room,msg.data)
+            if note in self.outgoing:
+                self.outgoing.remove(note)
+                return
+        self.incoming.put(msg)
+    def run(self):
+        while True:
+            msg = self.incoming.get()
+            services.logger.debug(f'processing {msg.sender} {msg.room}: {msg.data}')
+            self.rwkv.add(f'{msg.sender} {msg.room}: {msg.data}\n')
+            while not self.incoming.empty():
+                msg = self.incoming.get()
+                services.logger.debug(f'processing {msg.sender} {msg.room}: {msg.data}')
+                self.rwkv.add(f'{msg.sender} {msg.room}: {msg.data}\n')
+            if msg.sender == msg.service.user_id or msg.room not in msg.service.rooms:
+                services.logger.debug(f'skipping send text, waiting for more messages')
+                continue
+            services.logger.debug(f'preparing to send text')
+            self.rwkv.add(f'{msg.service.user_id} {msg.room}:')
+            text = ''
+            for token in self.rwkv:
+                if not text:
+                    token = token.lstrip()
+                if token == '\n':
+                    break
+                assert '\n' not in token
+                services.logger.debug(token)
+                text += token
+            note = (msg.room,text)
+            self.outgoing.add(note)
+            msg.service.send(msg.room, text)
+
 if __name__ == '__main__':
     #print('17: After the quick brown fox', end='', flush=True)
-    with RWKV('RWKV-4-1B5', 'RWKV-4-1B5-rwkvstate', default_ctx = '17: After the qvick brown fox') as rwkv:
+    with RWKVModel('RWKV-4-1B5', 'RWKV-4-1B5-rwkvstate', default_ctx = '17: After the qvick brown fox') as rwkv:
         for token in rwkv:
             print(token, end='', flush=True)
