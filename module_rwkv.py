@@ -1,10 +1,12 @@
-import os, queue, threading, types
+import os, psutil, queue, threading, types
 
 import tqdm, torch
 from prwkv.rwkvtokenizer import RWKVTokenizer
 from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
 import services
+
+MEMORY_BOUND = min(torch.cuda.get_device_properties(0).total_memory, psutil.virtual_memory().total) - 512*1024*1024
 
 class RWKVModel:
     def __init__(self, model_path, state_path, n_layer = None, n_embd = None, ctx_len = None, default_ctx = None):
@@ -33,10 +35,10 @@ class RWKVModel:
                 else:
                     _params.append((d, k, w))
                     param_size += w.nelement() * w.element_size()
-            if param_size < torch.cuda.get_device_properties(0).total_memory:
+            if param_size < MEMORY_BOUND:
                 for d, k, w in _params:
-                    d[k] = w.to('cuda').to(torch.bfloat16)
-                self.model.model.to(torch.bfloat16)
+                    d[k] = w.to('cuda')#.to(torch.bfloat16)
+                #self.model.model.to(torch.bfloat16)
                 self.model.model.to('cuda')
                 self.model.model.RUN_DEVICE = 'cuda'
         try:
@@ -85,7 +87,6 @@ class RWKV(threading.Thread):
     def __init__(self, bot):
         super().__init__(daemon=True)
         self.bot = bot
-        gpu_ram = torch.cuda.get_device_properties(0).total_memory
         models = {
             'RWKV-4-14B': 14*10**9,
             'RWKV-4-3B': 3*10**9,
@@ -93,8 +94,8 @@ class RWKV(threading.Thread):
             'RWKV-4-430M': 430*10**6,
             #'RWKV-4-169M': 169*10**6,
         }
-        for MODEL, param_size in models.items():
-            if gpu_ram / 2 > param_size:
+        for MODEL, param_count in models.items():
+            if MEMORY_BOUND > param_count * 4:
                 break
         self.rwkv = RWKVModel(MODEL, 'state--' + MODEL)
         if type(self.rwkv.metadata) is not dict:
