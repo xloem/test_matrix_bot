@@ -1,5 +1,6 @@
 import os, queue, threading
 
+import tqdm
 from prwkv.rwkvtokenizer import RWKVTokenizer
 from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
@@ -19,24 +20,29 @@ class RWKVModel:
         self.state_path = state_path
         self.model = RWKVRNN4NeoForCausalLM.from_pretrained(model_path, n_layer, n_embd, ctx_len)
         try:
-            self.model.load_context(self.state_path)
+            self.metadata = self.model.load_context(self.state_path)
         except FileNotFoundError:
             self.model.clear_memory()
             if default_ctx:
                 self.add(default_ctx)
+                self.metadata = default_ctx
+            else:
+                self.metadata = None
     @property
     def state(self):
         return self.model.init_state
-    def save(self):
+    def save(self, metadata = None):
         print(f'saving {self.state_path} ...')
-        self.model.save_context(self.state_path)
-    def add(self, input_text, init_state = None):
+        self.model.save_context(self.state_path, metadata or self.metadata)
+        self.metadata = metadata or self.metadata
+    def add(self, input_text, init_state = None, metadata = None):
         input_ids = self.tokenizer.encode(input_text).ids
         state = init_state or self.model.init_state
         for idx in range(len(input_ids) - 1):
            state = self.model.model.forward(input_ids[idx:idx+1], state, preprocess_only=True)
         self.model.init_logits, self.model.init_state = self.model.model.forward(input_ids[-1:], state)
-        self.model.save_context(self.state_path, input_text)
+        self.model.save_context(self.state_path, metadata or input_text)
+        self.metadata = metadata or input_text
         return self
     def __enter__(self):
         return self
@@ -53,30 +59,51 @@ class RWKV(threading.Thread):
         super().__init__(daemon=True)
         self.bot = bot
         self.rwkv = RWKVModel('RWKV-4-1B5', 'state--RWKV-4-1B5')
+        if type(self.rwkv.metadata) is not dict:
+            self.rwkv.metadata = {}
         self.incoming = queue.Queue()
         self.outgoing = set()
         self.start()
+        for service in self.bot.services:
+            for room in service.rooms.values():
+                metadata = self.rwkv.metadata.get(room.name)
+                history = room.history
+                start_idx = 0
+                for idx, event in enumerate(history):
+                    if event.id == metadata:
+                        start_idx = idx + 1
+                for event in history[start_idx:]:
+                    self.incoming.put(event)
     def on_message(self, msg):
+        if msg.type != 'message':
+            return
         if msg.sender == msg.service.user_id:
-            note = (msg.room,msg.data)
-            if note in self.outgoing:
-                self.outgoing.remove(note)
+            if msg.id in self.outgoing:
+                self.outgoing.remove(msg.id)
                 return
         self.incoming.put(msg)
     def run(self):
         while True:
             msg = self.incoming.get()
-            services.logger.debug(f'processing {msg.sender} {msg.room}: {msg.data}')
-            self.rwkv.add(f'{msg.sender} {msg.room}: {msg.data}\n')
+            progress = tqdm.tqdm(self.incoming.qsize() + 1, leave=False)
+            self.rwkv.metadata[msg.room.name] = msg.id
+            self.rwkv.add(f'{msg.sender} {msg.room.name}: {msg.data}\n', metadata = self.rwkv.metadata)
+            progress.n = 1
             while not self.incoming.empty():
+                progress.total = progress.n + self.incoming.qsize()
                 msg = self.incoming.get()
-                services.logger.debug(f'processing {msg.sender} {msg.room}: {msg.data}')
-                self.rwkv.add(f'{msg.sender} {msg.room}: {msg.data}\n')
-            if msg.sender == msg.service.user_id or msg.room not in msg.service.rooms:
-                services.logger.debug(f'skipping send text, waiting for more messages')
+                progress.set_description(f'{msg.sender} {msg.room.name}: {msg.data}')
+                self.rwkv.metadata[msg.room.name] = msg.id
+                self.rwkv.add(f'{msg.sender} {msg.room.name}: {msg.data}\n', metadata = self.rwkv.metadata)
+                progress.n += 1
+            if msg.sender == msg.service.user_id or not msg.room.voice:
+                progress.close()
                 continue
-            services.logger.debug(f'preparing to send text')
-            self.rwkv.add(f'{msg.service.user_id} {msg.room}:')
+            progress.refresh()
+            self.rwkv.add(f'{msg.service.user_id} {msg.room.name}:', metadata = self.rwkv.metadata)
+            progress.close()
+            progress = tqdm.tqdm(leave=False, total=128)
+            progress.n = 0
             text = ''
             for token in self.rwkv:
                 if not text:
@@ -84,11 +111,17 @@ class RWKV(threading.Thread):
                 if token == '\n':
                     break
                 assert '\n' not in token
-                services.logger.debug(token)
                 text += token
-            note = (msg.room,text)
-            self.outgoing.add(note)
-            msg.service.send(msg.room, text)
+                if len(text) >= 256:
+                    text += ' ...'
+                    break
+                progress.n += 1
+                progress.set_description(text)
+            progress.close()
+            send_id = msg.room.send(text)
+            self.rwkv.metadata[msg.room.name] = send_id
+            self.outgoing.add(send_id)
+            self.rwkv.save(metadata=self.rwkv.metadata)
 
 if __name__ == '__main__':
     #print('17: After the quick brown fox', end='', flush=True)

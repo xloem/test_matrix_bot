@@ -20,6 +20,17 @@ class Event:
         self.raw = raw
         self.reply = reply
 
+class Room:
+    def __init__(self, service, name, voice, members=[], history=[], raw=None):
+        self.service = service
+        self.name = name
+        self.voice = voice
+        self.members = members
+        self.history = history
+        self.raw = raw
+    def send(self, message):
+        return self.service.send(self, message)
+
 class Services:
     def __init__(self):
         self.services = []
@@ -29,6 +40,9 @@ class Services:
     def add(self, service):
         self.services.append(service)
         service.start()
+    def stop(self):
+        for service in self.services:
+            service.stop()
     def add_matrix(self, username, password, server):
         import service_matrix
         self.add(service_matrix.Matrix(self, username, password, server))
@@ -43,7 +57,7 @@ class Services:
     def _on_error(self, event, exception):
         import traceback
         exc_str = traceback.format_exc()
-        logger.error(f'{event.service} {event.room} {event.id} {event.sender} {event.type} {event.data} reply={event.reply}')
+        logger.error(f'{event.service} {event.room.name} {event.id} {event.sender} {event.type} {event.data} reply={event.reply}')
         for line in exc_str.split('\n'):
             logger.error(line)
         self.on_error(event, exception, exc_str)
@@ -63,6 +77,6 @@ class Services:
     def log(self, service, room, sender, text):
         log_lines = text.split('\n')
         padding = ' ' * len(sender)
-        logger.info(f'{room} {sender}: {log_lines[0]}')
+        logger.info(f'{room.name} {sender}: {log_lines[0]}')
         for extra_line in log_lines[1:]:
-            logger.info(f'{room} {padding}: {extra_line}')
+            logger.info(f'{room.name} {padding}: {extra_line}')
