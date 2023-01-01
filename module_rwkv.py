@@ -1,4 +1,4 @@
-import os, queue, threading
+import os, queue, threading, types
 
 import tqdm, torch
 from prwkv.rwkvtokenizer import RWKVTokenizer
@@ -20,8 +20,23 @@ class RWKVModel:
         self.state_path = state_path
         self.model = RWKVRNN4NeoForCausalLM.from_pretrained(model_path, n_layer, n_embd, ctx_len)
         if torch.cuda.is_available():
-            param_size = sum([param.nelement() * param.element_size() for param in self.model.model.parameters()])
+            param_size = sum([w.nelement() * w.element_size() for w in self.model.model.parameters()])
+            _pending = [(self.model.model.__dict__, 'w', self.model.model.w)]
+            _params = []
+            while len(_pending):
+                d, k, w = _pending.pop()
+                if type(w) is types.SimpleNamespace:
+                    w = w.__dict__
+                if type(w) is dict:
+                    for key, val in w.items():
+                        _pending.append((w, key, val))
+                else:
+                    _params.append((d, k, w))
+                    param_size += w.nelement() * w.element_size()
             if param_size < torch.cuda.get_device_properties(0).total_memory:
+                for d, k, w in _params:
+                    d[k] = w.to('cuda').to(torch.bfloat16)
+                self.model.model.to(torch.bfloat16)
                 self.model.model.to('cuda')
                 self.model.model.RUN_DEVICE = 'cuda'
         try:
@@ -33,6 +48,10 @@ class RWKVModel:
                 self.metadata = default_ctx
             else:
                 self.metadata = None
+        if self.model.init_state is not None:
+            self.model.init_state = self.model.init_state.to(self.model.model.w.emb.weight.dtype).to(self.model.model.w.emb.weight.device)
+        else:
+            self.model.init_state = torch.zeros(self.model.model.args.n_layer * 5, self.model.model.args.n_embd, dtype=self.model.model.w.emb.weight.dtype, device=self.model.model.w.emb.weight.device)
     @property
     def state(self):
         return self.model.init_state
@@ -66,7 +85,18 @@ class RWKV(threading.Thread):
     def __init__(self, bot):
         super().__init__(daemon=True)
         self.bot = bot
-        self.rwkv = RWKVModel('RWKV-4-1B5', 'state--RWKV-4-1B5')
+        gpu_ram = torch.cuda.get_device_properties(0).total_memory
+        models = {
+            'RWKV-4-14B': 14*10**9,
+            'RWKV-4-3B': 3*10**9,
+            'RWKV-4-1B5': 1.5*10**9,
+            'RWKV-4-430M': 430*10**6,
+            #'RWKV-4-169M': 169*10**6,
+        }
+        for MODEL, param_size in models.items():
+            if gpu_ram / 2 > param_size:
+                break
+        self.rwkv = RWKVModel(MODEL, 'state--' + MODEL)
         if type(self.rwkv.metadata) is not dict:
             self.rwkv.metadata = {}
         self.incoming = queue.Queue()
@@ -135,6 +165,6 @@ class RWKV(threading.Thread):
 
 if __name__ == '__main__':
     #print('17: After the quick brown fox', end='', flush=True)
-    with RWKVModel('RWKV-4-1B5', 'RWKV-4-1B5-rwkvstate', default_ctx = '17: After the qvick brown fox') as rwkv:
+    with RWKVModel('RWKV-4-430M', 'RWKV-4-430M-rwkvstate', default_ctx = '17: After the qvick brown fox') as rwkv:
         for token in rwkv:
             print(token, end='', flush=True)
