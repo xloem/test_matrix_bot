@@ -6,7 +6,7 @@ from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
 import services
 
-MEMORY_BOUND = min(torch.cuda.get_device_properties(0).total_memory, psutil.virtual_memory().available) - 512*1024*1024
+MEMORY_BOUND = min(torch.cuda.mem_get_info()[0], psutil.virtual_memory().available // 2)
 
 class RWKVModel:
     def __init__(self, model_path, state_path, n_layer = None, n_embd = None, ctx_len = None, default_ctx = None):
