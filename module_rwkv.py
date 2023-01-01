@@ -48,11 +48,14 @@ class RWKVModel:
         return self
     def __exit__(self, exc_t, exc_v, exc_tb):
         self.save()
+    def _ids_by_prob(self):
+        logits, ids = self.model.init_logits.sort(descending=True)
+        return ids
     def __iter__(self):
         while True:
             token_id = self.model.init_logits.argmax()
             self.model.init_logits, self.model.init_state = self.model.model.forward([token_id], self.model.init_state)
-            yield self.tokenizer.decode([token_id])
+            yield self.tokenizer.decode((token_id,))
 
 class RWKV(threading.Thread):
     def __init__(self, bot):
@@ -62,7 +65,7 @@ class RWKV(threading.Thread):
         if type(self.rwkv.metadata) is not dict:
             self.rwkv.metadata = {}
         self.incoming = queue.Queue()
-        self.outgoing = set()
+        self.already_processed = set()
         self.start()
         for service in self.bot.services:
             for room in service.rooms.values():
@@ -73,13 +76,15 @@ class RWKV(threading.Thread):
                     if event.id == metadata:
                         start_idx = idx + 1
                 for event in history[start_idx:]:
-                    self.incoming.put(event)
+                    if event.id not in self.already_processed:
+                        self.already_processed.add(event.id)
+                        self.incoming.put(event)
     def on_message(self, msg):
         if msg.type != 'message':
             return
         if msg.sender == msg.service.user_id:
-            if msg.id in self.outgoing:
-                self.outgoing.remove(msg.id)
+            if msg.id in self.already_processed:
+                self.already_processed.remove(msg.id)
                 return
         self.incoming.put(msg)
     def run(self):
@@ -87,20 +92,20 @@ class RWKV(threading.Thread):
             msg = self.incoming.get()
             progress = tqdm.tqdm(self.incoming.qsize() + 1, leave=False)
             self.rwkv.metadata[msg.room.name] = msg.id
-            self.rwkv.add(f'{msg.sender} {msg.room.name}: {msg.data}\n', metadata = self.rwkv.metadata)
+            self.rwkv.add(f'"{msg.sender}", in "{msg.room.name}", says: {msg.data}\n', metadata = self.rwkv.metadata)
             progress.n = 1
             while not self.incoming.empty():
                 progress.total = progress.n + self.incoming.qsize()
                 msg = self.incoming.get()
-                progress.set_description(f'{msg.sender} {msg.room.name}: {msg.data}')
+                progress.set_description(f'{msg.sender}: {msg.data}')
                 self.rwkv.metadata[msg.room.name] = msg.id
-                self.rwkv.add(f'{msg.sender} {msg.room.name}: {msg.data}\n', metadata = self.rwkv.metadata)
+                self.rwkv.add(f'"{msg.sender}", in "{msg.room.name}", says: {msg.data}\n', metadata = self.rwkv.metadata)
                 progress.n += 1
             if msg.sender == msg.service.user_id or not msg.room.voice:
                 progress.close()
                 continue
             progress.refresh()
-            self.rwkv.add(f'{msg.service.user_id} {msg.room.name}:', metadata = self.rwkv.metadata)
+            self.rwkv.add(f'"{msg.service.user_id}", in "{msg.room.name}", says:', metadata = self.rwkv.metadata)
             progress.close()
             progress = tqdm.tqdm(leave=False, total=128)
             progress.n = 0
@@ -120,7 +125,7 @@ class RWKV(threading.Thread):
             progress.close()
             send_id = msg.room.send(text)
             self.rwkv.metadata[msg.room.name] = send_id
-            self.outgoing.add(send_id)
+            self.already_processed.add(send_id)
             self.rwkv.save(metadata=self.rwkv.metadata)
 
 if __name__ == '__main__':
