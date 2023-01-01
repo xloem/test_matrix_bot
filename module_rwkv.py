@@ -1,6 +1,6 @@
 import os, queue, threading
 
-import tqdm
+import tqdm, torch
 from prwkv.rwkvtokenizer import RWKVTokenizer
 from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
@@ -19,6 +19,11 @@ class RWKVModel:
         self.model_path = model_path
         self.state_path = state_path
         self.model = RWKVRNN4NeoForCausalLM.from_pretrained(model_path, n_layer, n_embd, ctx_len)
+        if torch.cuda.is_available():
+            param_size = sum([param.nelement() * param.element_size() for param in self.model.model.parameters()])
+            if param_size < torch.cuda.get_device_properties(0).total_memory:
+                self.model.model.to('cuda')
+                self.model.model.RUN_DEVICE = 'cuda'
         try:
             self.metadata = self.model.load_context(self.state_path)
         except FileNotFoundError:
