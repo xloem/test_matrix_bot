@@ -4,7 +4,7 @@ class Commands:
         for service in self.bot.services:
             for room in service.rooms.values():
                 room.send("test_matrix_bot booting up")
-    def __del__(self):
+    def __exit__(self, exc_t, exc_v, exc_tb):
         for service in self.bot.services:
             for room in service.rooms.values():
                 room.send("test_matrix_bot shutting down")

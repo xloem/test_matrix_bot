@@ -20,6 +20,17 @@ class Bot(Services):
         self.modules.append(Commands(self))
         self.modules.append(RWKV(self))
 
+    def __enter__(self):
+        for module in self.modules:
+            if hasattr(module, '__enter__'):
+                module.__enter__()
+        return self
+
+    def __exit__(self, exc_t, exc_v, exc_tb):
+        for module in self.modules:
+            if hasattr(module, '__exit__'):
+                module.__exit__(exc_t, exc_v, exc_tb)
+
     def on_error(self, event, exception, exception_string):
         for line in exception_string.split('\n'):
             event.service.send(event.room, line)
@@ -31,5 +42,5 @@ class Bot(Services):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    bot = Bot()
-    bot.wait()
+    with Bot() as bot:
+        bot.wait()
