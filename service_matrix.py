@@ -94,6 +94,10 @@ class Matrix(MatrixBotAPI):
         elif event_raw['type'] == 'm.room.member':
             data = event_raw['content']['membership']
             type = 'membership'
+        elif event_raw['type'] == 'm.reaction':
+            # note: emoji reactions are i think technically any message with m.relates_to.rel_type=m.annotation
+            data = event_raw['content']['m.relates_to']['key']
+            type = 'reaction'
         else:
             data = f"{event_raw['type']}: {repr(event_raw['content'])}"
             type = 'other'
