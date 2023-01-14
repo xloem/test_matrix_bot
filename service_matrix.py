@@ -35,6 +35,24 @@ class Matrix(MatrixBotAPI):
             for room in self.client.get_rooms().values()
             if not room.guest_access
         }
+        
+    # read markers from https://github.com/matrix-org/matrix-python-sdk/pull/301
+    def _send_read_markers(self, room_id, mfully_read, mread=None):
+         """Perform PUT /rooms/$room_id/read_markers
+
+         Args:
+             room_id(str): The room ID.
+             mfully_read (str): event_id the read marker should located at.
+             mread (str): (optional) The event ID to set the read receipt location at.
+         """
+
+         content = {"m.fully_read": mfully_read}
+         if mread:
+             content['m.read'] = mread
+
+         path = "/rooms/{}/read_markers".format(quote(room_id))
+         return self.client.api._send("POST", path, content)
+
    
     @staticmethod
     def _room2name(room):
@@ -48,6 +66,9 @@ class Matrix(MatrixBotAPI):
     def send(self, room, message):
         result = room.raw.send_text(message)
         return result['event_id']
+    
+    def confirm(self, room, event):
+        self._send_read_markers(room.room_id, event.id, event.id)
 
     def _matrix2event(self, room_raw, event_raw):
         event_id = event_raw['event_id']
