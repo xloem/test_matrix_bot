@@ -4,6 +4,8 @@
 ##### Separating things this way is important when writing software.
 
 # this code was modified from example_bot.py in the matrix_bot_api repository
+# if rewritten, a more up-to-date library is https://github.com/poljar/matrix-nio .
+# the matrix_bot_api code is not complex, so a rewrite ideally won't be either.
 
 from matrix_bot_api.matrix_bot_api import MatrixBotAPI
 from matrix_bot_api.mregex_handler import MRegexHandler
