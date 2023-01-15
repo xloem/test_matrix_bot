@@ -95,7 +95,7 @@ class RWKV(threading.Thread):
             'RWKV-4-3B': 3*10**9,
             'RWKV-4-1B5': 1.5*10**9,
             'RWKV-4-430M': 430*10**6,
-            #'RWKV-4-169M': 169*10**6,
+            'RWKV-4-169M': 169*10**6,
         }
         for MODEL, param_count in models.items():
             if MEMORY_BOUND > param_count * 2:
