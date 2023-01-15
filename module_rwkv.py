@@ -120,7 +120,7 @@ class RWKV(threading.Thread):
                 history = room.history
                 start_idx = 0
                 for idx, event in enumerate(history):
-                    #if event.id == metadata:
+                    if event.id == metadata:
                         start_idx = idx + 1
                 for event in history[start_idx:]:
                     if event.id not in self.already_processed:
