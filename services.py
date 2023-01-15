@@ -38,6 +38,7 @@ class Services:
     def on_other(self, event):
         self.on_message(event)
     def on_message(self, event):
+        logger.debug(f'{event.service} {event.room} {event.id} {event.sender} {event.type} {event.data} reply={event.reply}')
         pass
 
     def _on_error(self, event, exception):
