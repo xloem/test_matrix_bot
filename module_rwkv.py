@@ -165,9 +165,9 @@ class RWKV(threading.Thread):
             progress = tqdm.tqdm(leave=False, total=128)
             progress.n = 0
             text = ''
-            msg.service.typing(msg.room, True)
+            msg.service.typing(msg.room, True, 10000)
             for token in self.rwkv:
-                msg.service.typing(msg.room, True)
+                msg.service.typing(msg.room, True, 10000)
                 if not text:
                     token = token.lstrip()
                 if token == '\n':
@@ -180,9 +180,9 @@ class RWKV(threading.Thread):
                 progress.n += 1
                 progress.set_description(text)
             progress.close()
-            msg.service.typing(msg.room, False)
             msg.service.delete(msg.room, thinking_id)
             send_id = msg.service.send(msg.room, text)
+            msg.service.typing(msg.room, False)
             self.rwkv.metadata[msg.room.name] = send_id
             self.already_processed.add(send_id)
             self.rwkv.save(metadata=self.rwkv.metadata)
