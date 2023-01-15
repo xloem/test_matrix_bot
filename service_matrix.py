@@ -10,6 +10,7 @@
 from matrix_bot_api.matrix_bot_api import MatrixBotAPI
 from matrix_bot_api.mregex_handler import MRegexHandler
 from matrix_bot_api.mcommand_handler import MCommandHandler
+from matrix_client.api import quote # for shims
 
 import services
 
@@ -35,24 +36,6 @@ class Matrix(MatrixBotAPI):
             for room in self.client.get_rooms().values()
             if not room.guest_access
         }
-        
-    # read markers from https://github.com/matrix-org/matrix-python-sdk/pull/301
-    def _send_read_markers(self, room_id, mfully_read, mread=None):
-         """Perform PUT /rooms/$room_id/read_markers
-
-         Args:
-             room_id(str): The room ID.
-             mfully_read (str): event_id the read marker should located at.
-             mread (str): (optional) The event ID to set the read receipt location at.
-         """
-
-         content = {"m.fully_read": mfully_read}
-         if mread:
-             content['m.read'] = mread
-
-         path = "/rooms/{}/read_markers".format(quote(room_id))
-         return self.client.api._send("POST", path, content)
-
    
     @staticmethod
     def _room2name(room):
@@ -66,14 +49,30 @@ class Matrix(MatrixBotAPI):
     def send(self, room, message):
         result = room.raw.send_text(message)
         return result['event_id']
+
+    def typing(self, room, flag = True, timeout = None):
+        self._send_typing(room.id, flag, timeout)
+
+    def delete(self, room, event):
+        result = room.raw.redact_message(event.id)
+        return result['event_id']
     
     def confirm(self, room, event):
         self._send_read_markers(room.room_id, event.id, event.id)
+
+    def react(self, room, event, reaction):
+        self.client.client.api.send_message_event(
+                room.id,
+                'm.reaction',
+                {'m.relates_to': dict(event_id=event.id, key=reaction, rel_type='m.annotation')},
+            )
+
 
     def _matrix2event(self, room_raw, event_raw):
         event_id = event_raw['event_id']
         sender = event_raw['sender']
         room_name = self._room2name(room_raw)
+        import pdb; pdb.set_trace()
         if room_name in self.rooms:
             room = self.rooms[room_name]
             room.raw = room_raw
@@ -85,6 +84,9 @@ class Matrix(MatrixBotAPI):
                 reply_id = event_raw['content']['m.relates_to']['m.in_reply_to']['event_id']
             else:
                 reply_id = event_raw['content']['m.relates_to']['event_id']
+        elif 'redacts' in event_raw:
+            # type == m.redaction
+            reply_id = event_raw['redacts']
         else:
             reply_id = None
         data = None
@@ -133,3 +135,34 @@ class Matrix(MatrixBotAPI):
     def stop(self):
         #self.client.stop_listener_thread() # cannot join current thread
         self.client.should_listen = False
+        
+
+    # read markers from https://github.com/matrix-org/matrix-python-sdk/pull/301
+    def _send_read_markers(self, room_id, mfully_read, mread=None):
+         """Perform PUT /rooms/$room_id/read_markers
+
+         Args:
+             room_id(str): The room ID.
+             mfully_read (str): event_id the read marker should located at.
+             mread (str): (optional) The event ID to set the read receipt location at.
+         """
+
+         content = {"m.fully_read": mfully_read}
+         if mread:
+             content['m.read'] = mread
+
+         path = "/rooms/{}/read_markers".format(quote(room_id))
+         return self.client.api._send("POST", path, content)
+
+     # typing styled after read markers
+     def _send_typing(self, room_id, typing : bool, timeout : int = None):
+         """Perform PUT /rooms/$room_id/typing
+
+         Args:
+             room_id(str): The room ID.
+         """
+         content = {"typing": typing}
+         if timeout:
+            content['timeout'] = timeout
+         path = "/rooms/{}/typing/{}".format(quote(room_id), quote(self.user_id))
+         return self.client.api._send("PUT", path, content)
