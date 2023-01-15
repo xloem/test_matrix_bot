@@ -7,9 +7,17 @@ from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
 import services
 
-MEMORY_BOUND = psutil.virtual_memory().available
+vm_snap, sw_snap = psutil.virtual_memory(), psutil.swap_memory()
 if torch.cuda.is_available():
-    MEMORY_BOUND = min(MEMORY_BOUND, torch.cuda.mem_get_info()[0])
+    # cuda: as much as cuda can hold if there is swap to transfer it
+    MEMORY_BOUND = min(vm_snap.free + sw_snap.free, torch.cuda.mem_get_info()[0])
+elif hasattr(vm_snap, 'buffers'):
+    # linux/bsd: reuse buffers for other tasks if swap can hold the buffers
+    MEMORY_BOUND = min(vm_snap.available - vm_snap.buffers + sw_snap.free, vm_snap.available)
+else:
+    # other: keep half of ram free, requiring as much swap as ram to use it
+    MEMORY_BOUND = (vm_snap.available + min(sw_snap.free, vm_snap.available)) / 2
+del vm_snap, sw_snap
 
 class RWKVModel:
     def __init__(self, model_path, state_path, n_layer = None, n_embd = None, ctx_len = None, default_ctx = None):
