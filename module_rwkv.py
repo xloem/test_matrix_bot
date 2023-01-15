@@ -120,7 +120,7 @@ class RWKV(threading.Thread):
                 history = room.history
                 start_idx = 0
                 for idx, event in enumerate(history):
-                    if event.id == metadata:
+                    #if event.id == metadata:
                         start_idx = idx + 1
                 for event in history[start_idx:]:
                     if event.id not in self.already_processed:
@@ -138,18 +138,26 @@ class RWKV(threading.Thread):
         while True:
             msg = self.incoming.get()
             progress = tqdm.tqdm(self.incoming.qsize() + 1, leave=False)
-            self.rwkv.metadata[msg.room.name] = msg.id
-            self.rwkv.add(f'"{msg.sender}", in "{msg.room.name}", says: {msg.data}\n', metadata = self.rwkv.metadata)
-            progress.n = 1
-            while not self.incoming.empty():
-                progress.total = progress.n + self.incoming.qsize()
-                msg = self.incoming.get()
+            # the first item used to be separated out here,
+            # so that the loop condition could be in the while statement.
+            # doing that again would make it easier to use a context for the thinking emoji.
+            progress.n = 0
+            while True:
                 progress.set_description(f'{msg.sender}: {msg.data}')
                 self.rwkv.metadata[msg.room.name] = msg.id
+                thinking_id = msg.service.react(msg, ':thinking_face:')
                 self.rwkv.add(f'"{msg.sender}", in "{msg.room.name}", says: {msg.data}\n', metadata = self.rwkv.metadata)
+                msg.service.confirm(msg)
                 progress.n += 1
+                if self.incoming.empty():
+                    break
+                else:
+                    msg.service.delete(msg.room, thinking_id)
+                progress.total = progress.n + self.incoming.qsize()
+                msg = self.incoming.get()
             if msg.sender == msg.service.user_id or not msg.room.voice:
                 progress.close()
+                msg.service.delete(msg.room, thinking_id)
                 continue
             progress.refresh()
             self.rwkv.add(f'"{msg.service.user_id}", in "{msg.room.name}", says:', metadata = self.rwkv.metadata)
@@ -157,7 +165,9 @@ class RWKV(threading.Thread):
             progress = tqdm.tqdm(leave=False, total=128)
             progress.n = 0
             text = ''
+            msg.service.typing(msg.room, True)
             for token in self.rwkv:
+                msg.service.typing(msg.room, True)
                 if not text:
                     token = token.lstrip()
                 if token == '\n':
@@ -170,7 +180,9 @@ class RWKV(threading.Thread):
                 progress.n += 1
                 progress.set_description(text)
             progress.close()
-            send_id = msg.room.send(text)
+            msg.service.typing(msg.room, False)
+            msg.service.delete(msg.room, thinking_id)
+            send_id = msg.service.send(msg.room, text)
             self.rwkv.metadata[msg.room.name] = send_id
             self.already_processed.add(send_id)
             self.rwkv.save(metadata=self.rwkv.metadata)

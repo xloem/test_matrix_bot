@@ -12,6 +12,8 @@ from matrix_bot_api.mregex_handler import MRegexHandler
 from matrix_bot_api.mcommand_handler import MCommandHandler
 from matrix_client.api import quote # for shims
 
+import emoji
+
 import services
 
 class MatrixRoom(services.Room):
@@ -47,32 +49,35 @@ class Matrix(MatrixBotAPI):
             return room.name + room.room_id[room.room_id.find(':'):]
 
     def send(self, room, message):
+        message = emoji.emojize(message)
         result = room.raw.send_text(message)
         return result['event_id']
 
     def typing(self, room, flag = True, timeout = None):
-        self._send_typing(room.id, flag, timeout)
+        self._send_typing(room.raw.room_id, flag, timeout)
 
-    def delete(self, room, event):
-        result = room.raw.redact_message(event.id)
+    def delete(self, room, event_id):
+        result = room.raw.redact_message(event_id)
         return result['event_id']
     
-    def confirm(self, room, event):
-        self._send_read_markers(room.room_id, event.id, event.id)
+    def confirm(self, event):
+        self._send_read_markers(event.room.raw.room_id, event.id, event.id) # returns empty dict
 
-    def react(self, room, event, reaction):
-        self.client.client.api.send_message_event(
-                room.id,
+    def react(self, event, reaction):
+        reaction = emoji.emojize(reaction)
+        result = self.client.api.send_message_event(
+                event.room.raw.room_id,
                 'm.reaction',
                 {'m.relates_to': dict(event_id=event.id, key=reaction, rel_type='m.annotation')},
             )
+        return result['event_id']
 
 
     def _matrix2event(self, room_raw, event_raw):
         event_id = event_raw['event_id']
         sender = event_raw['sender']
         room_name = self._room2name(room_raw)
-        import pdb; pdb.set_trace()
+        services.logger.debug(f'{room_name} {repr(event_raw)}')
         if room_name in self.rooms:
             room = self.rooms[room_name]
             room.raw = room_raw
@@ -91,19 +96,22 @@ class Matrix(MatrixBotAPI):
             reply_id = None
         data = None
         if event_raw['type'] == 'm.room.message':
-            data = event_raw['content']['body']
-            type = 'message'
+            data = event_raw['content']['body'] if event_raw['content'] else None
+            etype = 'message'
         elif event_raw['type'] == 'm.room.member':
-            data = event_raw['content']['membership']
-            type = 'membership'
+            data = event_raw['content']['membership'] if event_raw['content'] else None
+            etype = 'membership'
         elif event_raw['type'] == 'm.reaction':
             # note: emoji reactions are i think technically any message with m.relates_to.rel_type=m.annotation
-            data = event_raw['content']['m.relates_to']['key']
-            type = 'reaction'
+            #if 'm.relates_to' not in event_raw['content']:
+            data = event_raw['content']['m.relates_to']['key'] if event_raw['content'] else None
+            etype = 'reaction'
         else:
             data = f"{event_raw['type']}: {repr(event_raw['content'])}"
-            type = 'other'
-        return services.Event(self, room, event_id, sender, type, data=data, raw=event_raw, reply=reply_id)
+            etype = 'other'
+        if type(data) is str:
+            data = emoji.demojize(data)
+        return services.Event(self, room, event_id, sender, etype, data=data, raw=event_raw, reply=reply_id)
 
     def handle_message(self, room_raw, event_raw):
         event = self._matrix2event(room_raw, event_raw)
@@ -139,7 +147,7 @@ class Matrix(MatrixBotAPI):
 
     # read markers from https://github.com/matrix-org/matrix-python-sdk/pull/301
     def _send_read_markers(self, room_id, mfully_read, mread=None):
-         """Perform PUT /rooms/$room_id/read_markers
+         """Perform POST /rooms/$room_id/read_markers
 
          Args:
              room_id(str): The room ID.
@@ -154,8 +162,8 @@ class Matrix(MatrixBotAPI):
          path = "/rooms/{}/read_markers".format(quote(room_id))
          return self.client.api._send("POST", path, content)
 
-     # typing styled after read markers
-     def _send_typing(self, room_id, typing : bool, timeout : int = None):
+    # typing styled after read markers
+    def _send_typing(self, room_id, typing : bool, timeout : int = None):
          """Perform PUT /rooms/$room_id/typing
 
          Args:

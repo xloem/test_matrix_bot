@@ -81,3 +81,16 @@ class Services:
         logger.info(f'{room.name} {sender}: {log_lines[0]}')
         for extra_line in log_lines[1:]:
             logger.info(f'{room.name} {padding}: {extra_line}')
+
+class TempMessage:
+    def __init__(self, room, method, *params, **kwparams):
+        self.room = room
+        self.method = method
+        self.params = params
+    def __enter__(self):
+        self.msg = self.method(self.room, *self.params, **self.kwparams)
+        return self.msg
+    def __exit__(self, *params):
+        self.room.service.delete(self.room, self.msg)
+        self.msg = None
+
