@@ -32,6 +32,7 @@ class RWKVModel:
         self.model_path = model_path
         self.state_path = state_path
         self.model = RWKVRNN4NeoForCausalLM.from_pretrained(model_path, n_layer, n_embd, ctx_len)
+        self.model.half('bf16')
         if torch.cuda.is_available():
             param_size = sum([w.nelement() * w.element_size() for w in self.model.model.parameters()])
             _pending = [(self.model.model.__dict__, 'w', self.model.model.w)]
