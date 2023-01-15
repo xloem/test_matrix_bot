@@ -4,9 +4,12 @@ import tqdm, torch
 from prwkv.rwkvtokenizer import RWKVTokenizer
 from prwkv.rwkvrnnmodel import RWKVRNN4NeoForCausalLM
 
+
 import services
 
-MEMORY_BOUND = min(torch.cuda.mem_get_info()[0], psutil.virtual_memory().available // 2)
+MEMORY_BOUND = psutil.virtual_memory().available
+if torch.cuda.is_available():
+    MEMORY_BOUND = min(MEMORY_BOUND, torch.cuda.mem_get_info()[0])
 
 class RWKVModel:
     def __init__(self, model_path, state_path, n_layer = None, n_embd = None, ctx_len = None, default_ctx = None):
@@ -95,7 +98,7 @@ class RWKV(threading.Thread):
             #'RWKV-4-169M': 169*10**6,
         }
         for MODEL, param_count in models.items():
-            if MEMORY_BOUND > param_count * 4:
+            if MEMORY_BOUND > param_count * 2:
                 break
         self.rwkv = RWKVModel(MODEL, 'state--' + MODEL)
         if type(self.rwkv.metadata) is not dict:
