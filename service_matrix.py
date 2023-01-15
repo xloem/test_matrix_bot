@@ -57,20 +57,24 @@ class Matrix(MatrixBotAPI):
         self._send_typing(room.raw.room_id, flag, timeout)
 
     def delete(self, room, event_id):
-        result = room.raw.redact_message(event_id)
-        return result['event_id']
+        if event_id is not None:
+            result = room.raw.redact_message(event_id)
+            return result['event_id']
     
     def confirm(self, event):
         self._send_read_markers(event.room.raw.room_id, event.id, event.id) # returns empty dict
 
     def react(self, event, reaction):
         reaction = emoji.emojize(reaction)
-        result = self.client.api.send_message_event(
-                event.room.raw.room_id,
-                'm.reaction',
-                {'m.relates_to': dict(event_id=event.id, key=reaction, rel_type='m.annotation')},
-            )
-        return result['event_id']
+        try:
+            result = self.client.api.send_message_event(
+                    event.room.raw.room_id,
+                    'm.reaction',
+                    {'m.relates_to': dict(event_id=event.id, key=reaction, rel_type='m.annotation')},
+                )
+            return result['event_id']
+        except:
+            return None
 
 
     def _matrix2event(self, room_raw, event_raw):
